@@ -33,13 +33,6 @@ router.post('/', (req, res) => {
     url,
   ];
 
-  if (fs.existsSync(COOKIES_SOURCE)) {
-    fs.copyFileSync(COOKIES_SOURCE, COOKIES_WRITABLE);
-    args.push('--cookies', COOKIES_WRITABLE);
-  }
-
-  args.push(url);
-
   execFile('yt-dlp', args, (err) => {
     if (err) {
       console.error(`Job ${jobId} failed:`, err.message);
