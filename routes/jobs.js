@@ -25,10 +25,11 @@ router.post('/', (req, res) => {
 
   const outPath = path.join('/tmp', `${jobId}.${format}`);
 
-  const args = ['-f', 'mp4', '-o', outPath];
+  const args = ['-v', '-f', 'mp4', '-o', outPath];
   args.push('--extractor-args', 'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416')
   if (fs.existsSync(COOKIES_PATH)) {
     args.push('--cookies', COOKIES_PATH);
+    console.log('Cookie file exists:', fs.existsSync(COOKIES_PATH), COOKIES_PATH);
   }
   args.push(url);
 
