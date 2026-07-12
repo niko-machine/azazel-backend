@@ -9,6 +9,7 @@ const supabase = require('../lib/supabase');
 // In-memory job tracking: Map<jobId, { id, status, outputUrl }>
 // Resets on server restart — fine for now, see the optional upgrade at the bottom.
 const jobs = new Map();
+const COOKIES_PATH = process.env.COOKIES_PATH || path.join(__dirname, '../cookies.txt');
 
 // POST /jobs   body: { url, format? }
 // Responds immediately with a "processing" job, then does the real work in the background.
