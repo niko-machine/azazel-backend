@@ -30,6 +30,7 @@ router.post('/', (req, res) => {
     '--extractor-args', 'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416',
     '--js-runtimes', 'node',
     '--remote-components', 'ejs:github',
+    url,
   ];
 
   if (fs.existsSync(COOKIES_SOURCE)) {
