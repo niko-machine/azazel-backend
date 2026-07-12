@@ -28,7 +28,8 @@ router.post('/', (req, res) => {
     '--merge-output-format', 'mp4',
     '-o', outPath,
     '--extractor-args', 'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416',
-    '--extractor-args', 'youtube:player_client=android,web',
+    '--js-runtimes', 'node',
+    '--remote-components', 'ejs:github',
   ];
 
   if (fs.existsSync(COOKIES_SOURCE)) {

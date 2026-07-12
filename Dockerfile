@@ -2,7 +2,7 @@ FROM node:22-slim
 
 RUN apt-get update && \
     apt-get install -y python3 python3-pip ffmpeg git && \
-    pip3 install --break-system-packages yt-dlp bgutil-ytdlp-pot-provider && \
+    pip3 install --break-system-packages yt-dlp yt-dlp-ejs bgutil-ytdlp-pot-provider && \
     rm -rf /var/lib/apt/lists/*
 
 # Clone and build the PO token provider's HTTP server
