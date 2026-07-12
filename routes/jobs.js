@@ -10,14 +10,12 @@ const supabase = require('../lib/supabase');
 // Resets on server restart — fine for now, see the optional upgrade at the bottom.
 const jobs = new Map();
 const COOKIES_PATH = process.env.COOKIES_PATH || path.join(__dirname, '../cookies.txt');
+const COOKIES_SOURCE = process.env.COOKIES_PATH || path.join(__dirname, '../cookies.txt');
+const COOKIES_WRITABLE = '/tmp/cookies.txt';
 
-// POST /jobs   body: { url, format? }
-// Responds immediately with a "processing" job, then does the real work in the background.
 router.post('/', (req, res) => {
   const { url, format = 'mp4' } = req.body;
-  if (!url) {
-    return res.status(400).json({ error: 'url is required' });
-  }
+  if (!url) return res.status(400).json({ error: 'url is required' });
 
   const jobId = uuidv4();
   jobs.set(jobId, { id: jobId, status: 'processing', outputUrl: null });
@@ -25,12 +23,19 @@ router.post('/', (req, res) => {
 
   const outPath = path.join('/tmp', `${jobId}.${format}`);
 
-  const args = ['-v', '-f', 'mp4', '-o', outPath];
-  args.push('--extractor-args', 'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416')
-  if (fs.existsSync(COOKIES_PATH)) {
-    args.push('--cookies', COOKIES_PATH);
-    console.log('Cookie file exists:', fs.existsSync(COOKIES_PATH), COOKIES_PATH);
+  const args = [
+    '-f', 'bv*+ba/b',
+    '--merge-output-format', 'mp4',
+    '-o', outPath,
+    '--extractor-args', 'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416',
+    '--extractor-args', 'youtube:player_client=android,web',
+  ];
+
+  if (fs.existsSync(COOKIES_SOURCE)) {
+    fs.copyFileSync(COOKIES_SOURCE, COOKIES_WRITABLE);
+    args.push('--cookies', COOKIES_WRITABLE);
   }
+
   args.push(url);
 
   execFile('yt-dlp', args, (err) => {
