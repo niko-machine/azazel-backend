@@ -24,7 +24,14 @@ router.post('/', (req, res) => {
 
   const outPath = path.join('/tmp', `${jobId}.${format}`);
 
-  execFile('yt-dlp', ['-f', 'mp4', '-o', outPath, url], (err) => {
+  const args = ['-f', 'mp4', '-o', outPath];
+  args.push('--extractor-args', 'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416')
+  if (fs.existsSync(COOKIES_PATH)) {
+    args.push('--cookies', COOKIES_PATH);
+  }
+  args.push(url);
+
+  execFile('yt-dlp', args, (err) => {
     if (err) {
       console.error(`Job ${jobId} failed:`, err.message);
       jobs.set(jobId, { id: jobId, status: 'failed', outputUrl: null });
