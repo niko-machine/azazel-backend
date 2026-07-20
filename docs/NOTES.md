@@ -128,22 +128,18 @@ the app fails with `yt-dlp: command not found`.
 
 ## API contract (for frontend reference)
 
-**Every request below now requires an `Authorization: Bearer <access_token>` header** —
-this is new as of the Supabase Auth addition (see `BACKEND_TODO.md` Section 2) and is a
-breaking change: **the Android app doesn't send this header yet**, so every `/jobs`
-request from the app will currently fail with `401` until the app implements Supabase
-sign-in and attaches the token. Don't be alarmed if downloads stop working entirely in the
-app right after this backend change deploys — that's expected until the frontend catches
-up, not a regression to debug.
+**Every request below requires an `Authorization: Bearer <access_token>` header.** The
+Android app now implements this (login scoped to the Downloads tab — see the frontend
+repo), so this is no longer a breaking/pending item, just documented behavior.
 
 **POST `/jobs`**
 ```json
-{ "url": "https://example.com/video-or-image" }
+{ "url": "https://example.com/video-or-image", "outputName": "my-file-name" }
 ```
-There's no `format` field anymore — the backend downloads whatever the URL actually is
-(video or image) and reports the real extension/content-type back once the job is
-`done`, instead of forcing everything into an `mp4` container. If the app still sends a
-`format` field it's simply ignored (harmless, but safe to drop from the request body).
+`outputName` is **required** — a request without it gets `400`. There's no `format`
+field — the backend downloads whatever the URL actually is (video or image) and reports
+the real extension/content-type back once the job is `done`.
+
 → (missing/invalid token)
 ```json
 { "error": "missing token" }
@@ -151,21 +147,39 @@ There's no `format` field anymore — the backend downloads whatever the URL act
 with HTTP status `401` (or `{ "error": "invalid token" }` if a token was sent but doesn't
 verify).
 
-→ (valid token, non-YouTube URL)
+→ (missing outputName)
 ```json
-{ "id": "abc-123", "status": "processing", "outputUrl": null }
+{ "error": "outputName is required" }
 ```
-→ (valid token, YouTube URL)
+with HTTP status `400`.
+
+→ (cooldown not yet elapsed)
+```json
+{ "error": "Please wait before starting another download", "retryAfterMs": 8231 }
+```
+with HTTP status `429`. `retryAfterMs` is how long the client should still wait — use it
+for an accurate countdown rather than guessing.
+
+→ (valid request, non-YouTube URL)
+```json
+{ "id": "abc-123", "status": "processing", "outputUrl": null, "url": "...", "outputName": "my-file-name" }
+```
+→ (valid request, YouTube URL)
 ```json
 { "error": "YouTube downloads are currently unavailable, try another source" }
 ```
 with HTTP status `422`.
 
-**GET `/jobs/{id}`** → same success shape as above; `status` is one of `processing`,
-`done`, `failed`; on `done`, `outputUrl` is a public Supabase Storage link. Also requires
-a valid token, and only returns a job if it belongs to the requesting user — a valid
-token querying someone else's job ID gets `404`, not `403`, to avoid confirming the job
-ID exists at all.
+**GET `/jobs/{id}`** → same success shape as the POST response above (`id`, `status`,
+`outputUrl`, `url`, `outputName`); `status` is one of `processing`, `done`, `failed`.
+Requires a valid token, and only returns a job if it belongs to the requesting user — a
+valid token querying someone else's job ID gets `404`, not `403`, to avoid confirming the
+job ID exists at all.
+
+**GET `/jobs`** (new) → returns an array of the requesting user's jobs, most recent
+first, same per-job shape as above, capped at 100 results. This is what the frontend
+should call once when the Downloads tab loads, to populate history that survives an app
+restart instead of starting empty every time.
 
 The job-shape fields themselves are unchanged from earlier versions — only the auth
 requirement is new.

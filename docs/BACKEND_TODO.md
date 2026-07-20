@@ -75,19 +75,17 @@ curl -X POST http://localhost:3000/jobs \
   -d '{"url": "..."}'
 ```
 
-**On the Android side**, this isn't implemented yet — the app currently sends no
-`Authorization` header at all, so every request from the app will now fail with `401`
-until a login screen is added and the resulting token is attached to Retrofit calls (see
-Section 2.1's original outline below for the shape of that work — still frontend-side, not
-done as part of this backend change).
+**On the Android side**, sign-in/sign-up and token attachment are now implemented (a
+login screen scoped to the Downloads tab only — Browse remains unauthenticated, see the
+frontend repo's docs for details).
 
-### Android side — not yet done
+### Android side — implemented
 
-The Android app doesn't attach an `Authorization` header yet. Until it does, every request
-from the app will fail with `401`. Needed: a sign-in screen using the Supabase Kotlin
-client, and an OkHttp `Interceptor` (or per-call header) attaching
-`supabaseClient.auth.currentSessionOrNull()?.accessToken` to outgoing Retrofit calls. This
-is genuinely frontend work — track it there, not here.
+The app now has a login/register screen shown only when the Downloads tab is opened
+without a valid session, and attaches the resulting token to `/jobs` requests via an
+OkHttp interceptor. Session expiry mid-use is also handled (clears the stale token and
+returns to login with an explanation, rather than silently failing jobs). See the
+frontend repo for the actual implementation.
 
 ---
 
@@ -112,3 +110,36 @@ the user wait through a `processing` → `failed` cycle.
 YouTube is intentionally unsupported — see `NOTES.md` for the full mitigation history and
 why. Nothing in this file works around that; Section 3 is designed specifically to
 communicate it clearly, not bypass it.
+
+---
+
+## 4. Job history, required output name, and spam cooldown — DONE
+
+Three related changes, all in `routes/jobs.js`:
+
+**Migration needed** — run once in Supabase SQL Editor if not already applied:
+```sql
+alter table jobs add column output_name text;
+```
+
+**`GET /jobs`** (new) — lists the requesting user's job history, most recent first,
+capped at 100. This is what lets the Android app show persistent history instead of an
+in-memory list that resets on every app restart — the frontend should call this once on
+`DownloadsFragment` load and populate the job list from it, rather than starting empty
+every time.
+
+**Required output name** — `POST /jobs` now requires a non-empty `outputName` field in the
+body; a request without one gets `400`. The name is sanitized server-side (path-traversal
+and filesystem-invalid characters stripped, length capped) regardless of what the client
+already validated — never trust client-side validation alone for something that ends up
+in a storage path. The sanitized name becomes part of the actual Supabase Storage path
+(`outputs/{jobId}-{name}.{ext}`), with the jobId prefix kept specifically so two different
+jobs requesting the same name never collide.
+
+**Server-side cooldown** — a user must wait `COOLDOWN_MS` (currently 15000ms / 15s,
+adjust the constant in `routes/jobs.js` if a different value is wanted) between job
+creations. A request inside the cooldown window gets `429` with a `retryAfterMs` field so
+the frontend can show an accurate countdown rather than a generic error. This is enforced
+by checking the user's own most recent job's `created_at` — deliberately server-side, not
+just a disabled button, since a client-side-only cooldown doesn't stop anything from a
+second device or a direct API call.
