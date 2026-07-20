@@ -1,7 +1,6 @@
 # Backend TODO & Implementation Guide
 
-Status as of the last update: Sections 1 and 3 are implemented in this repo. Section 2
-(Supabase Auth) remains optional/not started.
+Status as of the last update: all three sections are implemented in this repo.
 
 ---
 
@@ -32,47 +31,63 @@ That's the actual behavior this change exists to fix.
 
 ---
 
-## 2. Optional: Supabase Auth (bonus rubric credit) — NOT STARTED
+## 2. Supabase Auth — DONE
 
-Skip unless you specifically want the extra-credit point. Self-contained — doesn't block
-anything else.
+`POST /jobs` and `GET /jobs/:id` are now gated behind a valid Supabase auth token. Every
+request must include an `Authorization: Bearer <access_token>` header, or it returns `401`.
 
-### 2.1 Android side
-
-Add the Supabase Kotlin client, implement a simple email/password sign-in screen, and
-attach the resulting session's access token to outgoing requests:
-
-```kotlin
-val accessToken = supabaseClient.auth.currentSessionOrNull()?.accessToken
+**Migration needed** — run once in Supabase SQL Editor if not already applied:
+```sql
+alter table jobs add column user_id uuid references auth.users(id);
 ```
 
-Add an `Authorization` header to the Retrofit `ApiService` calls — either via an OkHttp
-`Interceptor` (cleanest) or as a header parameter on each call.
+**What's implemented:**
+- `lib/auth.js` — `requireAuth` middleware, verifies the token via
+  `supabase.auth.getUser(token)` and attaches `req.userId`
+- `index.js` — `requireAuth` applied to the `/jobs` route
+- `routes/jobs.js` — jobs are stored with the creating user's `user_id`, and
+  `GET /jobs/:id` only returns a job if it belongs to the requesting user (not just a
+  login gate — genuine per-user isolation)
 
-### 2.2 Backend side — verify the token
+**Testing with curl now requires a real token.** Get one via Supabase's Auth REST API
+(replace `YOUR_PROJECT` and `YOUR_ANON_KEY` — the anon key, not service_role, for this
+call specifically, since this is a client-side auth request):
 
-```javascript
-async function requireAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: 'missing token' });
+```bash
+# Sign up a test user (once)
+curl -X POST 'https://YOUR_PROJECT.supabase.co/auth/v1/signup' \
+  -H "apikey: YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "password": "testpassword123"}'
 
-  const token = authHeader.replace('Bearer ', '');
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data.user) return res.status(401).json({ error: 'invalid token' });
-
-  req.userId = data.user.id;
-  next();
-}
+# Sign in to get an access_token
+curl -X POST 'https://YOUR_PROJECT.supabase.co/auth/v1/token?grant_type=password' \
+  -H "apikey: YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "password": "testpassword123"}'
 ```
 
-Apply it in `index.js`:
-```javascript
-app.use('/jobs', requireAuth, require('./routes/jobs'));
+Copy `access_token` from the sign-in response, then use it in your existing job tests:
+```bash
+curl -X POST http://localhost:3000/jobs \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{"url": "..."}'
 ```
 
-If pursuing this, consider adding a `user_id` column to the `jobs` table so each user only
-sees their own history — otherwise this is auth as a gate, not per-user isolation, which is
-still a legitimate and simpler version to ship if time is short.
+**On the Android side**, this isn't implemented yet — the app currently sends no
+`Authorization` header at all, so every request from the app will now fail with `401`
+until a login screen is added and the resulting token is attached to Retrofit calls (see
+Section 2.1's original outline below for the shape of that work — still frontend-side, not
+done as part of this backend change).
+
+### Android side — not yet done
+
+The Android app doesn't attach an `Authorization` header yet. Until it does, every request
+from the app will fail with `401`. Needed: a sign-in screen using the Supabase Kotlin
+client, and an OkHttp `Interceptor` (or per-call header) attaching
+`supabaseClient.auth.currentSessionOrNull()?.accessToken` to outgoing Retrofit calls. This
+is genuinely frontend work — track it there, not here.
 
 ---
 

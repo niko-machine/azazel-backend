@@ -28,10 +28,10 @@ router.post('/', async (req, res) => {
 
   const { error: insertError } = await supabase
     .from('jobs')
-    .insert({ id: jobId, url, status: 'processing', output_url: null });
+    .insert({ id: jobId, url, status: 'processing', output_url: null, user_id: req.userId });
 
   if (insertError) {
-    console.error(`Job ${jobId} failed to create:`, insertError.message);
+    console.error(`Job ${jobId} failed to create:`, insertError);
     return res.status(500).json({ error: 'failed to create job' });
   }
 
@@ -87,6 +87,7 @@ router.get('/:id', async (req, res) => {
     .from('jobs')
     .select()
     .eq('id', req.params.id)
+    .eq('user_id', req.userId)
     .single();
 
   if (error || !data) {

@@ -120,22 +120,40 @@ the app fails with `yt-dlp: command not found`.
 
 ## API contract (for frontend reference)
 
+**Every request below now requires an `Authorization: Bearer <access_token>` header** —
+this is new as of the Supabase Auth addition (see `BACKEND_TODO.md` Section 2) and is a
+breaking change: **the Android app doesn't send this header yet**, so every `/jobs`
+request from the app will currently fail with `401` until the app implements Supabase
+sign-in and attaches the token. Don't be alarmed if downloads stop working entirely in the
+app right after this backend change deploys — that's expected until the frontend catches
+up, not a regression to debug.
+
 **POST `/jobs`**
 ```json
 { "url": "https://example.com/video", "format": "mp4" }
 ```
-→ (non-YouTube URL)
+→ (missing/invalid token)
+```json
+{ "error": "missing token" }
+```
+with HTTP status `401` (or `{ "error": "invalid token" }` if a token was sent but doesn't
+verify).
+
+→ (valid token, non-YouTube URL)
 ```json
 { "id": "abc-123", "status": "processing", "outputUrl": null }
 ```
-→ (YouTube URL)
+→ (valid token, YouTube URL)
 ```json
 { "error": "YouTube downloads are currently unavailable, try another source" }
 ```
 with HTTP status `422`.
 
 **GET `/jobs/{id}`** → same success shape as above; `status` is one of `processing`,
-`done`, `failed`; on `done`, `outputUrl` is a public Supabase Storage link.
+`done`, `failed`; on `done`, `outputUrl` is a public Supabase Storage link. Also requires
+a valid token, and only returns a job if it belongs to the requesting user — a valid
+token querying someone else's job ID gets `404`, not `403`, to avoid confirming the job
+ID exists at all.
 
-This contract is unchanged from earlier versions of the backend — the Postgres migration
-was a storage swap, not an API change.
+The job-shape fields themselves are unchanged from earlier versions — only the auth
+requirement is new.
