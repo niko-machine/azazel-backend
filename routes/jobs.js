@@ -8,12 +8,39 @@ const supabase = require('../lib/supabase');
 
 const YOUTUBE_PATTERN = /(youtube\.com|youtu\.be)/i;
 
-// POST /jobs   body: { url, format? }
+// Minimal extension -> content-type map. yt-dlp/generic extractors cover both
+// video sites and direct image links, so the output is not always mp4 — we
+// look at what actually landed on disk instead of assuming.
+const CONTENT_TYPES = {
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  mov: 'video/quicktime',
+  m4a: 'audio/mp4',
+  mp3: 'audio/mpeg',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+};
+
+function contentTypeFor(ext) {
+  return CONTENT_TYPES[ext.toLowerCase()] || 'application/octet-stream';
+}
+
+// POST /jobs   body: { url }
 // YouTube URLs are rejected immediately — see docs/NOTES.md for why.
 // All other job state now lives in Supabase Postgres (see docs/BACKEND_TODO.md, Section 1)
 // instead of an in-memory Map, so status survives a Render restart/redeploy.
+//
+// No `format` is requested from yt-dlp anymore. This endpoint supports both video
+// and image URLs (see docs/NOTES.md), and forcing `--merge-output-format mp4` broke
+// anything that wasn't a video (images have no streams to merge, so the request would
+// still succeed, but every uploaded file was mislabeled as `video/mp4`). Instead we let
+// yt-dlp pick the real extension via `%(ext)s` and read that back off disk before upload.
 router.post('/', async (req, res) => {
-  const { url, format = 'mp4' } = req.body;
+  const { url } = req.body;
   if (!url) {
     return res.status(400).json({ error: 'url is required' });
   }
@@ -37,12 +64,11 @@ router.post('/', async (req, res) => {
 
   res.json({ id: jobId, status: 'processing', outputUrl: null });
 
-  const outPath = path.join('/tmp', `${jobId}.${format}`);
+  const outTemplate = path.join('/tmp', `${jobId}.%(ext)s`);
 
   const args = [
-    '-f', 'bv*+ba/b',
-    '--merge-output-format', 'mp4',
-    '-o', outPath,
+    '-f', 'bv*+ba/b/b',
+    '-o', outTemplate,
     '--extractor-args', 'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416',
     '--js-runtimes', 'node',
     '--remote-components', 'ejs:github',
@@ -55,17 +81,32 @@ router.post('/', async (req, res) => {
       await supabase.from('jobs').update({ status: 'failed' }).eq('id', jobId);
       return;
     }
-    await uploadResult(jobId, outPath, format);
+    await uploadResult(jobId);
   });
 });
 
-async function uploadResult(jobId, outPath, format) {
+// Finds whatever yt-dlp actually wrote for this job (extension varies: mp4/webm for
+// video, jpg/png/webp for images, etc.) rather than assuming a fixed format.
+function findOutputFile(jobId) {
+  const match = fs.readdirSync('/tmp').find((name) => name.startsWith(`${jobId}.`));
+  return match ? path.join('/tmp', match) : null;
+}
+
+async function uploadResult(jobId) {
+  const outPath = findOutputFile(jobId);
+  if (!outPath) {
+    console.error(`Job ${jobId} upload failed: no output file found`);
+    await supabase.from('jobs').update({ status: 'failed' }).eq('id', jobId);
+    return;
+  }
+
+  const ext = path.extname(outPath).slice(1) || 'bin';
   const fileBuffer = fs.readFileSync(outPath);
-  const storagePath = `outputs/${jobId}.${format}`;
+  const storagePath = `outputs/${jobId}.${ext}`;
 
   const { error } = await supabase.storage
     .from('downloads')
-    .upload(storagePath, fileBuffer, { contentType: 'video/mp4' });
+    .upload(storagePath, fileBuffer, { contentType: contentTypeFor(ext) });
 
   if (error) {
     console.error(`Job ${jobId} upload failed:`, error.message);

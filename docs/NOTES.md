@@ -82,6 +82,14 @@ infra complexity, so treat as a deliberate scope decision.
 **For demos and testing:** use any non-YouTube source — direct video file URLs,
 X/Twitter, or other yt-dlp-supported sites. These work with zero special handling.
 
+**Images work too, not just video.** `POST /jobs` no longer forces a video-only
+pipeline (`-f bv*+ba/b` still runs, but `--merge-output-format mp4` is gone, and the
+output template uses `%(ext)s` instead of a hardcoded `.mp4`). A direct image link or
+an image-post URL on an image-hosting site downloads and uploads with its real
+extension/content-type (`jpg`, `png`, `webp`, etc.) instead of being silently
+mislabeled as `video/mp4`. This is what the app's "images and videos, but not YouTube"
+guidance copy should describe.
+
 ---
 
 ## Running the backend locally
@@ -130,8 +138,12 @@ up, not a regression to debug.
 
 **POST `/jobs`**
 ```json
-{ "url": "https://example.com/video", "format": "mp4" }
+{ "url": "https://example.com/video-or-image" }
 ```
+There's no `format` field anymore — the backend downloads whatever the URL actually is
+(video or image) and reports the real extension/content-type back once the job is
+`done`, instead of forcing everything into an `mp4` container. If the app still sends a
+`format` field it's simply ignored (harmless, but safe to drop from the request body).
 → (missing/invalid token)
 ```json
 { "error": "missing token" }
