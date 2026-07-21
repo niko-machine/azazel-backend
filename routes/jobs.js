@@ -120,10 +120,14 @@ router.post('/', async (req, res) => {
     url,
   ];
 
-  execFile('yt-dlp', args, async (err) => {
+  execFile('yt-dlp', args, async (err, stdout, stderr) => {
     if (err) {
-      console.error(`Job ${jobId} failed:`, err.message);
-      await supabase.from('jobs').update({ status: 'failed' }).eq('id', jobId);
+      // yt-dlp's real failure reason is almost always in stderr, not err.message
+      // (which is often just "Command failed with exit code 1"). Trim to something
+      // reasonable for display — full yt-dlp output can be long and noisy.
+      const reason = (stderr || err.message || 'Unknown error').trim().slice(-500);
+      console.error(`Job ${jobId} failed:`, reason);
+      await supabase.from('jobs').update({ status: 'failed', error_message: reason }).eq('id', jobId);
       return;
     }
     await uploadResult(jobId, cleanName);
@@ -140,8 +144,9 @@ function findOutputFile(jobId) {
 async function uploadResult(jobId, outputName) {
   const outPath = findOutputFile(jobId);
   if (!outPath) {
+    const reason = 'Download completed but no output file was produced (the source may not contain downloadable media)';
     console.error(`Job ${jobId} upload failed: no output file found`);
-    await supabase.from('jobs').update({ status: 'failed' }).eq('id', jobId);
+    await supabase.from('jobs').update({ status: 'failed', error_message: reason }).eq('id', jobId);
     return;
   }
 
@@ -156,7 +161,7 @@ async function uploadResult(jobId, outputName) {
 
   if (error) {
     console.error(`Job ${jobId} upload failed:`, error.message);
-    await supabase.from('jobs').update({ status: 'failed' }).eq('id', jobId);
+    await supabase.from('jobs').update({ status: 'failed', error_message: `Upload failed: ${error.message}` }).eq('id', jobId);
     return;
   }
 
@@ -191,6 +196,7 @@ router.get('/', async (req, res) => {
       outputUrl: job.output_url,
       url: job.url,
       outputName: job.output_name,
+      errorMessage: job.error_message,
     }))
   );
 });
@@ -214,6 +220,7 @@ router.get('/:id', async (req, res) => {
     outputUrl: data.output_url,
     url: data.url,
     outputName: data.output_name,
+    errorMessage: data.error_message,
   });
 });
 

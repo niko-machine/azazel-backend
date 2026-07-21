@@ -171,10 +171,12 @@ for an accurate countdown rather than guessing.
 with HTTP status `422`.
 
 **GET `/jobs/{id}`** → same success shape as the POST response above (`id`, `status`,
-`outputUrl`, `url`, `outputName`); `status` is one of `processing`, `done`, `failed`.
-Requires a valid token, and only returns a job if it belongs to the requesting user — a
-valid token querying someone else's job ID gets `404`, not `403`, to avoid confirming the
-job ID exists at all.
+`outputUrl`, `url`, `outputName`, `errorMessage`); `status` is one of `processing`,
+`done`, `failed`. `errorMessage` is `null` unless `status` is `failed`, in which case it
+holds the real underlying failure reason (yt-dlp's actual stderr output, trimmed) —
+display this instead of a generic "failed" label. Requires a valid token, and only
+returns a job if it belongs to the requesting user — a valid token querying someone
+else's job ID gets `404`, not `403`, to avoid confirming the job ID exists at all.
 
 **GET `/jobs`** (new) → returns an array of the requesting user's jobs, most recent
 first, same per-job shape as above, capped at 100 results. This is what the frontend

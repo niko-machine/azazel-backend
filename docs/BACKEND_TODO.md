@@ -143,3 +143,31 @@ the frontend can show an accurate countdown rather than a generic error. This is
 by checking the user's own most recent job's `created_at` — deliberately server-side, not
 just a disabled button, since a client-side-only cooldown doesn't stop anything from a
 second device or a direct API call.
+
+---
+
+## 5. Persisted, real failure reasons — DONE
+
+**Migration needed** — run once in Supabase SQL Editor if not already applied:
+```sql
+alter table jobs add column error_message text;
+```
+
+Previously, `err.message` from a failed `yt-dlp` invocation was only ever `console.error`'d
+to Render's logs — never persisted, never returned to the client. Every `failed` job in the
+app looked identical regardless of cause (bad URL, unsupported site, extraction failure,
+upload failure), forcing manual log-diving every time.
+
+Now: `execFile`'s actual `stderr` output (not just `err.message`, which is often just
+"Command failed with exit code 1" and tells you nothing useful) is captured, trimmed to the
+last 500 characters (yt-dlp's real error is almost always at the end of its output), and
+saved to the new `error_message` column. Upload failures and the "no output file produced"
+case are captured the same way. All three job-returning endpoints (`POST /jobs`,
+`GET /jobs/:id`, `GET /jobs`) now include `errorMessage` in the response — frontend should
+display it on failed jobs instead of just "Status: failed".
+
+**On the TikTok short-link failure reported alongside this fix** (`vt.tiktok.com`): once
+this ships and redeployed, retry that URL and check the job's `errorMessage` — that'll
+show the actual yt-dlp failure reason (e.g. an extractor error, a geo/rate limit, or
+something else entirely) instead of guessing blind. Worth revisiting with real data rather
+than speculative fixes.
